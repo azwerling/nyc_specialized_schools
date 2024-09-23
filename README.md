@@ -4,11 +4,11 @@ Specialized High Schools in New York City are considered elite public schools an
 Project completed in R and QGIS.
 
 R packages:
-sf
-tidyverse
-plotly
-ggpubr
-raster
-tmap
-spgwr
-sp 
+- sf
+- tidyverse
+- plotly
+- ggpubr
+- raster
+- tmap
+- spgwr
+- sp 
