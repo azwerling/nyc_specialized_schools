@@ -1,0 +1,389 @@
+---
+title: "nyc"
+format: html
+editor: visual
+---
+
+```{r include = F}
+
+options(repos = c(CRAN = "https://cloud.r-project.org"))
+
+install.packages(c("sf", "tidyverse", "plotly", "ggpubr", "raster", "tmap", "spgwr","sp")) 
+
+library(sf)
+library(tidyverse)
+library(plotly)
+library(spdep)
+library(ggpubr)
+library(raster)
+library(spatstat)
+library(lfe)
+library(ncf)
+library(spgwr)
+library(sp)
+library(spdep)
+library(spatstat)
+library(ncf)
+library(spgwr)
+```
+
+```{r}
+
+# Creating the feeder school threshold
+
+shsat_percentages <- read_csv("/shsat_new.csv")
+
+summary(shsat_percentages)
+
+view(shsat_percentages)
+
+# Creating a histogram
+ggplot(shsat_percentages, aes(x = offer_per_8)) +
+  geom_histogram(binwidth = 1.5, fill = "blue", color = "black") +
+  theme_minimal() +
+  labs(title = "Middle School Offer Rate to Specialized High Schools", x = "Offers Per Total Number of 8th Graders (Percentage)", y = "Frequency of Schools")
+
+```
+
+```{r}
+
+# Feeder Schools
+
+feeder_schools <-  shsat_percentages %>%
+  subset(offer_per_8 >= 40)
+
+view(feeder_schools)
+
+```
+
+```{r}
+
+# Weighting 10k-40k
+total_census <- sum(inc_pop_2_sub$census_tract_pop)
+
+inc_pop_2_sub <- inc_pop_2_sub %>%
+  mutate(weight = census_tract_pop / total_census)
+
+view(inc_pop_2_sub)
+
+inc_pop_2_sub <- inc_pop_2_sub %>% st_transform(2263)
+
+weighted_df <- st_write(inc_pop_2_sub,"/nyc/weighted.shp")
+
+
+# Weighted Distance from GIS --> 40k and under
+
+weighted_dist_less_40 <- st_read("nyc/dec_7th/distance_correct.shp")
+
+view(weighted_dist_less_40)
+
+weighted_dist_less_40 <- weighted_dist_less_40 %>%
+  mutate(weighted_dist_less_40 = weight * miles)
+
+sum(weighted_dist_less_40$weighted_dist)
+
+
+weighted_dist_less_40 <- weighted_dist_less_40 %>%
+  rename(weighted_dist = weighted_dist_less_40)
+
+view(weighted_dist_less_40)
+
+
+# Under 40k = 3.852598 miles on average
+
+write_csv(weighted_dist_less_40, "/nyc/all_inc/under_40.csv")
+
+ggplot(weighted_dist_less_40, aes(x = miles)) +
+  geom_histogram(binwidth = 1.5, fill = "blue", color = "black") +
+  theme_minimal() +
+  labs(title = "Middle School Offer Rate to Specialized High Schools", x = "Offers Per Total Number of 8th Graders (Percentage)", y = "Frequency of Schools")
+
+
+
+# Weighting 40k - 75k
+
+# Loading in shapefile
+inc_40_75 <- st_read("nyc/all_inc/SimplyAnalytics_Shapefiles_2023-12-08_18_37_14_9bf163e13cef05d1a1f7798372191dbf/SimplyAnalytics_Shapefiles_2023-12-08_18_37_14_9bf163e13cef05d1a1f7798372191dbf.shp")
+view(inc_40_75)
+
+# Renaming columns
+inc_40_75_df <- inc_40_75 %>%
+  rename(inc_40k_50k = VALUE0, inc_51k_60k = VALUE1, inc_60k_75k = VALUE2)
+view(inc_40_75_df)
+
+# Combining columm variables per observation row
+inc_40_75_df <- inc_40_75_df %>%
+  mutate(total_obv = inc_40k_50k + inc_51k_60k + inc_60k_75k)
+view(inc_40_75_df)
+
+# Getting the entire population for this income bracket
+total_census_40_75 <- sum(inc_40_75_df$inc_40k_50k, inc_40_75_df$inc_51k_60k, inc_40_75_df$inc_60k_75k)
+total_census_40_75
+
+# Calculating the weight
+inc_40_75_df <- inc_40_75_df %>%
+  mutate(weight_40_75 = total_obv / total_census_40_75)
+view(inc_40_75_df)
+
+# Removing total obv = 0
+inc_40_75_sub <- inc_40_75_df %>%
+  subset(total_obv != 0)
+
+view(inc_40_75_sub)
+
+inc_40_75_sub <- inc_40_75_sub %>% st_transform(2263)
+
+inc_40_75_w <- st_write(inc_40_75_sub,"/nyc/all_inc/40_75/inc_40_75_w.shp")
+
+
+# Weighted Distance from GIS --> 40-75
+
+weighted_dist_40_75 <- st_read("/nyc/all_inc/40_75/40_75_nearest.shp")
+
+view(weighted_dist_40_75)
+
+weighted_dist_40_75  <- weighted_dist_40_75 %>%
+  mutate(weighted_dist = w_40_75 * miles)
+
+sum(weighted_dist_40_75$weighted_dist)
+
+view(weighted_dist_40_75)
+
+# 40-75 = 4.098138 miles on average
+
+
+# Weighting 75-200k
+
+# Loading in shapefile
+inc_75_200 <- st_read("/nyc/all_inc/75_200/SimplyAnalytics_Shapefiles_2023-12-08_19_07_31_3b88ee42707b436867d050527872d6ec/SimplyAnalytics_Shapefiles_2023-12-08_19_07_31_3b88ee42707b436867d050527872d6ec.shp")
+view(inc_75_200)
+
+# Renaming columns
+inc_75_200_df <- inc_75_200 %>%
+  rename(inc_75k_99k = VALUE0, inc_100k_124k = VALUE1, inc_125k_150k = VALUE2, inc_150k_199k = VALUE3)
+view(inc_75_200_df)
+
+# Combining columm variables per observation row
+inc_75_200_df <- inc_75_200_df %>%
+  mutate(total_obv = inc_75k_99k + inc_100k_124k + inc_125k_150k + inc_150k_199k)
+view(inc_75_200_df)
+
+# Getting the entire population for this income bracket
+total_census_75_200 <- sum(inc_75_200_df$inc_75k_99k, inc_75_200_df$inc_100k_124k, inc_75_200_df$inc_125k_150k, inc_75_200_df$inc_150k_199k)
+total_census_75_200
+
+# Calculating the weight
+inc_75_200_df <- inc_75_200_df %>%
+  mutate(weight_75_200 = total_obv / total_census_75_200)
+view(inc_75_200_df)
+
+# Removing total obv = 0
+inc_75_200_sub <- inc_75_200_df %>%
+  subset(total_obv != 0)
+
+inc_75_200_sub <- inc_75_200_sub %>% st_transform(2263)
+
+inc_75_200_w <- st_write(inc_75_200_sub,"/nyc/all_inc/75_200/inc_75_200_w.shp")
+
+# Weighted Distance from GIS --> 75-200
+
+weighted_dist_75_200<- st_read("/nyc/all_inc/75_200/75_200_nearest.shp")
+
+view(weighted_dist_75_200)
+
+weighted_dist_75_200  <- weighted_dist_75_200 %>%
+  mutate(weighted_dist = w_75_20 * miles)
+
+sum(weighted_dist_75_200$weighted_dist)
+
+view(weighted_dist_75_200)
+
+# 75-200 = 3.996249 miles on average
+
+
+# Weighting 200+
+
+# Loading in shapefile
+inc_200_plus <- st_read("/nyc/all_inc/200_plus/SimplyAnalytics_Shapefiles_2023-12-08_18_34_56_b55b698cd466855ddee574af64353300/SimplyAnalytics_Shapefiles_2023-12-08_18_34_56_b55b698cd466855ddee574af64353300.shp")
+view(inc_200_plus)
+
+# Renaming columns
+inc_200_plus_df <- inc_200_plus %>%
+  rename(inc_200_plus = VALUE0)
+view(inc_200_plus_df)
+
+# Combining columm variables per observation row
+inc_200_plus_df <- inc_200_plus_df %>%
+  mutate(total_obv = inc_200_plus)
+view(inc_200_plus_df)
+
+# Getting the entire population for this income bracket
+total_census_200_plus <- sum(inc_200_plus_df$inc_200_plus)
+total_census_200_plus
+
+# Calculating the weight
+inc_200_plus_df <- inc_200_plus_df %>%
+  mutate(weight_200_plus = total_obv / total_census_200_plus)
+view(inc_200_plus_df)
+
+# Removing total obv = 0
+inc_200_plus_sub <- inc_200_plus_df %>%
+  subset(total_obv != 0)
+
+inc_200_plus_sub <- inc_200_plus_sub %>% st_transform(2263)
+
+inc_200_plus_w <- st_write(inc_200_plus_sub,"/nyc/all_inc/200_plus/inc_200_plus_w.shp")
+
+# Weighted Distance from GIS --> 75-200
+
+weighted_dist_200_plus<- st_read("/nyc/all_inc/200_plus/200_plus_nearest.shp")
+
+view(weighted_dist_200_plus)
+
+weighted_dist_200_plus  <- weighted_dist_200_plus %>%
+  mutate(weighted_dist = wg_200_ * miles)
+
+sum(weighted_dist_200_plus$weighted_dist)
+
+view(weighted_dist_200_plus)
+
+# 200+ = 2.784104 miles on average
+
+
+
+write_csv(weighted_dist_200_plus, "/nyc/all_inc/200_plus.csv")
+```
+
+```{r}
+
+weighted_dist_less_40 <- weighted_dist_less_40 %>%
+  mutate(log_distance = log(distance))
+ols_low <- lm(cnss_t_ ~ log_distance, weighted_dist_less_40)
+summary(ols_low)
+res_low <- resid(ols_low)
+plot(fitted(ols_low), res_low) %>% abline(0,0)
+qqnorm(res_low)
+
+
+weighted_dist_40_75 <- weighted_dist_40_75 %>%
+  mutate(log_distance = log(distance))
+ols_working <- lm(totl_bv ~ log_distance, weighted_dist_40_75)
+summary(ols_working)
+res_working <- resid(ols_working)
+plot(fitted(ols_working), res_working) %>% abline(0,0)
+qqnorm(res_working)
+
+weighted_dist_75_200 <- weighted_dist_75_200 %>%
+  mutate(log_distance = log(distance))
+ols_middle <- lm(totl_bv ~ log_distance, weighted_dist_75_200)
+summary(ols_middle)
+res_middle <- resid(ols_middle)
+plot(fitted(ols_middle), res_middle) %>% abline(0,0)
+qqnorm(res_middle)
+
+weighted_dist_200_plus <- weighted_dist_200_plus %>%
+  mutate(log_distance = log(distance))
+ols_upper <- lm(totl_bv ~ log_distance, weighted_dist_200_plus)
+summary(ols_upper)
+res_upper <- resid(ols_upper)
+plot(fitted(ols_upper), res_upper) %>% abline(0,0)
+qqnorm(res_upper)
+
+
+install.packages("stargazer")
+library(stargazer)
+
+stargazer(ols_low, type = "text", 
+          title = "Distance to Feeder Middle Schools and Population for Low Income Individuals",
+          header = FALSE, 
+          label = "Table1",
+          dep.var.labels.include = FALSE,
+          covariate.labels = c("Distance to Feeder Middle School (feet, ln)"),
+          omit.stat = c("LL", "ser", "aic", "bic"),
+          digits = 3)
+
+
+library(lfe)
+
+felm_low <- felm(cnss_t_ ~ log_distance, 0 | 0 | 0, data = weighted_dist_less_40)
+summary(felm_low, robust = TRUE)
+res_low_felm <- resid(felm_low)
+plot(fitted(felm_low), res_low_felm) %>% abline(0,0)
+qqnorm(res_low_felm)
+
+```
+
+```{r}
+
+# GWR
+bw <- gwr.sel(log_distance ~ log_median_inc, data = as(distance_sub, "Spatial"))
+
+gwr.out <- gwr(log_distance ~ log_median_inc, data = as(distance_sub, "Spatial"), bandwidth = bw,
+               hatmatrix = TRUE,
+               se.fit = TRUE)
+
+gwr.out
+
+gwr_results <- gwr.out$SDF
+
+
+# Plot coefficients
+gwr_results <- gwr_results %>% 
+  st_as_sf(gwr_results) %>% 
+  st_transform(gwr_results, crs = 32616)
+
+
+# Plots of local coefficients as quintiles
+quant = quantile(gwr_results$log_median_inc, probs = seq(0,1,0.2))
+
+gwr_results$log_median_inc_q = cut(gwr_results$log_median_inc, quant)
+
+plot1 <-  ggplot() + geom_sf(data = gwr_results, aes(color=median_inc_q)) +
+  theme(legend.position = c(0.8, 0.8),
+        legend.title = element_blank(),
+        legend.text = element_text(size = 8),
+        axis.title.x = element_blank(),
+        axis.title.y = element_blank(),
+        ) +
+  scale_color_brewer(palette = "Spectral") +
+  ggtitle("Median Income Coef.")
+
+
+plot1
+```
+
+```{r}
+# Borough Boundaries
+
+borough <- st_read("/borough_boundary_2.shp")
+
+st_crs(borough)
+
+borough <- borough %>% st_transform(2263)
+
+borough_pr <- st_write(borough, "/borough.shp")
+```
+
+```{r}
+
+# Testing if Feeder and Weighted info are in the same projection
+feeder_only <- st_read("/feeder_only.shp")
+
+st_crs(feeder_only) == st_crs(weighted_df)
+
+# Check the CRS
+current_crs_f <- st_crs(feeder_only)
+
+# Print the CRS information
+print(current_crs_f)
+
+ifelse(current_crs_w == current_crs_f, TRUE, FALSE)
+
+
+view(feeder_only)
+
+feeder_only_pr <- feeder_only %>% st_transform(2263)
+
+view(feeder_only_pr)
+feeder_only_pr <- st_write(feeder_only_pr,"/feeder_only_pr_2.shp")
+```
